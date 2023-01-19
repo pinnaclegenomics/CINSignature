@@ -1,1 +1,50 @@
+#!/bin/sh
 
+#Path to working directly
+#to check your working directory path
+module load bedtools/2.20.1
+
+pwd
+
+cd /home/yk417/updated_scripts/ # Working directory
+
+PROBEFILE=/home/yk417/updated_scripts/hg19_Cancer_Gene.txt
+AHEADER=/home/yk417/updated_scripts/Annot_Header.txt
+PROJECT=DOD_ASCAT_CNV_Results
+
+mkdir RESULT
+
+mkdir -p RESULT/$PROJECT 
+mkdir -p RESULT/$PROJECT/CN_Class 
+mkdir -p RESULT/$PROJECT/CN_Annotation
+
+for INFILE in /rds/project/sn206/rds-sn206-nik-zainal/projects/DOD_ovarian_pilot/calling/*_vs_*/*_vs_*/ascat/*.copynumber.caveman.csv 
+do
+    SAMPLE=${INFILE#/rds/project/sn206/rds-sn206-nik-zainal/projects/DOD_ovarian_pilot/calling/*_vs_*/*_vs_*/ascat/}
+    SAMPLE=${SAMPLE%.copynumber.caveman.csv}
+    OUTFILE=RESULT/$PROJECT/CN_Annotation/$SAMPLE.CNV_Annotation.txt
+    OUTFILE2=RESULT/$PROJECT/CN_Class/$SAMPLE.CNV_Class.txt
+
+    echo Processing $SAMPLE to $OUTFILE $OUTFILE2
+
+Count=`wc --lines < $INFILE`
+echo "Total ASCAT CNV Regions: $Count"
+awk '{if($1~"Ploidy")printf " %.2f",$2}' /rds/project/sn206/rds-sn206-nik-zainal/projects/DOD_ovarian_pilot/calling/*_vs_*/*_vs_*/ascat/$SAMPLE.samplestatistics.txt  > $OUTFILE.tmp
+
+awk -v var=$Count '{for(i=0;i<var;i++)print}' $OUTFILE.tmp >  $OUTFILE.tmp2
+
+sed 's/,/\t/g' $INFILE | awk '{print$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8}' - | paste - $OUTFILE.tmp2 | bedtools intersect -a - -b $PROBEFILE -wo  | cat $AHEADER - > $OUTFILE
+
+awk '{print$1"\t"$0}' $OUTFILE | awk '{if ( $7 >= 9 && $9>2.7) { $1 = "AMP" } else {if ( $9 <2.7 && $7 >= 5 ) { $1 = "AMP" } else {if ( $7 == 0 ) { $1 = "HOMDEL" } }}} {print}' OFS="\t"  | awk '{if(($1~/AMP/)||($1~/HOMDEL/))print}' | awk -F"\t" '{ if(($2 == "Chr") ? $1="CN_Type" : $0) print;}' OFS="\t" - > $OUTFILE2
+
+rm $OUTFILE.tmp $OUTFILE.tmp2
+
+#zcat $INFILE | awk 'NR > 1 && $1 ~ "^chr" && $11 >= 5 { print $1 "\t" $2 "\t" $3 "\t" $12 }' | sort -k 1,1 -k 2,2n -k 3,3n | bedtools closest -a $PROBEFILE -b - > $OUTFILE.tmp && mv $OUTFILE.tmp $OUTFILE
+#wc $OUTFILE
+#head $OUTFILE
+done
+
+echo "*************************"
+echo Removing temporary Files
+echo "*************************"
+echo Process Completed Successfully Hurray!!!
